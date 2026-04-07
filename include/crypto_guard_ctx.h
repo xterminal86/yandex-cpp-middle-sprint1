@@ -2,10 +2,12 @@
 
 #include <string>
 
-namespace CryptoGuard {
+namespace CryptoGuard
+{
 
-class CryptoGuardCtx {
-public:
+class CryptoGuardCtx
+{
+  public:
     CryptoGuardCtx() {}
     ~CryptoGuardCtx() {}
 
@@ -16,13 +18,20 @@ public:
     CryptoGuardCtx &operator=(CryptoGuardCtx &&) noexcept = default;
 
     // API
-    void EncryptFile(std::iostream &inStream, std::iostream &outStream, std::string_view password) {}
-    void DecryptFile(std::iostream &inStream, std::iostream &outStream, std::string_view password) {}
-    std::string CalculateChecksum(std::iostream &inStream) { return "NOT_IMPLEMENTED"; }
+    void EncryptFile(std::iostream &inStream,
+                     std::iostream &outStream,
+                     std::string_view password);
+    void DecryptFile(std::iostream &inStream,
+                     std::iostream &outStream,
+                     std::string_view password);
+    std::string CalculateChecksum(std::iostream &inStream)
+    {
+      return "NOT_IMPLEMENTED";
+    }
 
-private:
+  private:
     class Impl;
-    Impl *pImpl_;
+    Impl* pImpl_;
 };
 
 }  // namespace CryptoGuard

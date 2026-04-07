@@ -68,22 +68,43 @@ void ProgramOptions::Parse(int argc, char* argv[])
     return true;
   };
 
-  if (not ExtractArg("input", inputFile_))
+  switch (command_)
   {
-    error_ = "Bad input file";
-    return;
-  }
+    case COMMAND_TYPE::ENCRYPT:
+    case COMMAND_TYPE::DECRYPT:
+    {
+      if (not ExtractArg("input", inputFile_))
+      {
+        error_ = "Bad input file";
+        return;
+      }
 
-  if (not ExtractArg("output", outputFile_))
-  {
-    error_ = "Bad output file";
-    return;
-  }
+      if (not ExtractArg("output", outputFile_))
+      {
+        error_ = "Bad output file";
+        return;
+      }
 
-  if (not ExtractArg("password", password_))
-  {
-    error_ = "No password";
-    return;
+      if (not ExtractArg("password", password_))
+      {
+        error_ = "No password";
+        return;
+      }
+    }
+    break;
+
+    case COMMAND_TYPE::CHECKSUM:
+    {
+      if (not ExtractArg("input", inputFile_))
+      {
+        error_ = "Bad input file";
+        return;
+      }
+    }
+    break;
+
+    default:
+      break;
   }
 }
 

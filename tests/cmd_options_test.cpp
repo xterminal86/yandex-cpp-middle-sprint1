@@ -154,4 +154,27 @@ TEST(ProgramOptions, CommandLine)
     EXPECT_NO_THROW(po.Parse(5, argv));
     EXPECT_EQ(ProgramOptions::COMMAND_TYPE::DECRYPT, po.GetCommand());
   }
+  // ---------------------------------------------------------------------------
+  {
+    char* argv[] =
+    {
+        "exe"
+      , "--command=checksum"
+      , "--input=in.txt"
+    };
+    EXPECT_NO_THROW(po.Parse(3, argv));
+    EXPECT_EQ(ProgramOptions::COMMAND_TYPE::CHECKSUM, po.GetCommand());
+  }
+  {
+    char* argv[] =
+    {
+        "exe"
+      , "--command=checksum"
+      , "--input=in.txt"
+      // ignore extra args
+      , "--output=out.txt"
+    };
+    EXPECT_NO_THROW(po.Parse(4, argv));
+    EXPECT_EQ(ProgramOptions::COMMAND_TYPE::CHECKSUM, po.GetCommand());
+  }
 }

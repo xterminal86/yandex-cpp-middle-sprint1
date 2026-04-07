@@ -133,7 +133,7 @@ int main(int argc, char *argv[])
         break;
 
       case COMMAND_TYPE::CHECKSUM:
-        std::print("Checksum: {}\n", "CHECKSUM_NOT_IMPLEMENTED");
+        cryptoCtx.CalculateChecksum(options.GetInputFile());
         break;
 
       case COMMAND_TYPE::HELP:

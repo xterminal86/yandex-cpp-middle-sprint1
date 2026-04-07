@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    # Не больше трёх ошибок за раз
-    add_compile_options(-fmax-errors=3)
+    add_compile_options(-fmax-errors=1)
+    add_compile_options(-Wno-write-strings)
 endif()
 
 # Ищем необходимые библиотеки

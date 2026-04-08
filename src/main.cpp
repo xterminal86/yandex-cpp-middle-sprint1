@@ -1,5 +1,3 @@
-#include "cmd_options.h"
-#include "crypto_guard_ctx.h"
 #include <algorithm>
 #include <array>
 #include <iostream>
@@ -7,6 +5,10 @@
 #include <print>
 #include <stdexcept>
 #include <string>
+#include <fstream>
+
+#include "cmd_options.h"
+#include "crypto_guard_ctx.h"
 
 struct AesCipherParams
 {
@@ -122,6 +124,12 @@ int main(int argc, char *argv[])
     CryptoGuard::CryptoGuardCtx cryptoCtx;
 
     using COMMAND_TYPE = CryptoGuard::ProgramOptions::COMMAND_TYPE;
+
+    using FilePtr = std::unique_ptr<
+      std::fstream,
+      decltype( [](std::fstream* file){ file->close(); } )
+    >;
+
     switch (options.GetCommand())
     {
       case COMMAND_TYPE::ENCRYPT:
@@ -133,8 +141,26 @@ int main(int argc, char *argv[])
         break;
 
       case COMMAND_TYPE::CHECKSUM:
-        cryptoCtx.CalculateChecksum(options.GetInputFile());
-        break;
+      {
+        //
+        // 'std::make_unique' uses "default" deleter, so we can't use it here.
+        //
+        FilePtr inFile(
+          new std::fstream(options.GetInputFile(),
+                           std::ios::in | std::ios::binary)
+        );
+
+        if (not inFile->is_open())
+        {
+          std::println("Failed to open file '{}' - does it exist?",
+                       options.GetInputFile());
+          return 1;
+        }
+
+        std::string checksum = cryptoCtx.CalculateChecksum(*inFile.get());
+        std::println("{}", checksum);
+      }
+      break;
 
       case COMMAND_TYPE::HELP:
         break;

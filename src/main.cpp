@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <array>
 #include <iostream>
-#include <openssl/evp.h>
 #include <print>
 #include <stdexcept>
 #include <string>
@@ -10,113 +9,29 @@
 #include "cmd_options.h"
 #include "crypto_guard_ctx.h"
 
-struct AesCipherParams
+const std::string kErrOpenFileIn =
+  "Failed to open file '{}' for reading - check if it exists "
+  "or that you have enough permissions.";
+
+const std::string kErrOpenFileOut =
+  "Failed to open file '{}' for writing - do you have enough permissions?";
+
+template <typename... Args>
+void PrintError(const std::string& fmtString, Args&&... args)
 {
-  // AES-256 key size
-  static const size_t KEY_SIZE = 32;
-  // AES block size (IV length)
-  static const size_t IV_SIZE = 16;
-  // Cipher algorithm
-  const EVP_CIPHER *cipher = EVP_aes_256_cbc();
-
-  // 1 for encryption, 0 for decryption
-  int encrypt;
-  std::array<unsigned char, KEY_SIZE> key;  // Encryption key
-  std::array<unsigned char, IV_SIZE> iv;    // Initialization vector
-};
-
-AesCipherParams CreateChiperParamsFromPassword(std::string_view password)
-{
-  AesCipherParams params;
-  constexpr std::array<unsigned char, 8> salt =
-  { '1', '2', '3', '4', '5', '6', '7', '8' };
-
-  int result = EVP_BytesToKey(
-    params.cipher,
-    EVP_sha256(),
-    salt.data(),
-    reinterpret_cast<const unsigned char *>(password.data()),
-    password.size(),
-    1,
-    params.key.data(),
-    params.iv.data()
+  std::println(
+    "{}",
+    std::vformat(
+      fmtString,
+      std::make_format_args(args...)
+    )
   );
-
-  if (result == 0)
-  {
-    throw std::runtime_error{"Failed to create a key from password"};
-  }
-
-  return params;
 }
 
 int main(int argc, char *argv[])
 {
   try
   {
-    /*
-    //
-    // OpenSSL пример использования:
-    //
-    std::string input = "01234567890123456789";
-    std::string output;
-
-    OpenSSL_add_all_algorithms();
-
-    auto params = CreateChiperParamsFromPassword("12341234");
-    params.encrypt = 1;
-    auto *ctx = EVP_CIPHER_CTX_new();
-
-    // Инициализируем cipher
-    EVP_CipherInit_ex(ctx,
-                      params.cipher,
-                      nullptr,
-                      params.key.data(),
-                      params.iv.data(),
-                      params.encrypt);
-
-    std::vector<unsigned char> outBuf(16 + EVP_MAX_BLOCK_LENGTH);
-    std::vector<unsigned char> inBuf(16);
-    int outLen;
-
-    // Обрабатываем первые N символов
-    std::copy(input.begin(), std::next(input.begin(), 16), inBuf.begin());
-    EVP_CipherUpdate(ctx,
-                     outBuf.data(),
-                     &outLen,
-                     inBuf.data(),
-                     static_cast<int>(16));
-    for (int i = 0; i < outLen; ++i)
-    {
-      output.push_back(outBuf[i]);
-    }
-
-    // Обрабатываем оставшиеся символы
-    std::copy(std::next(input.begin(), 16), input.end(), inBuf.begin());
-    EVP_CipherUpdate(ctx,
-                     outBuf.data(),
-                     &outLen,
-                     inBuf.data(),
-                     static_cast<int>(input.size() - 16));
-    for (int i = 0; i < outLen; ++i)
-    {
-      output.push_back(outBuf[i]);
-    }
-
-    // Заканчиваем работу с cipher
-    EVP_CipherFinal_ex(ctx, outBuf.data(), &outLen);
-    for (int i = 0; i < outLen; ++i)
-    {
-      output.push_back(outBuf[i]);
-    }
-    EVP_CIPHER_CTX_free(ctx);
-    std::print("String encoded successfully. Result: '{}'\n\n", output);
-    EVP_cleanup();
-    //
-    // Конец примера
-    //
-    */
-
     CryptoGuard::ProgramOptions options;
 
     options.Parse(argc, argv);
@@ -130,15 +45,53 @@ int main(int argc, char *argv[])
       decltype( [](std::fstream* file){ file->close(); } )
     >;
 
-    switch (options.GetCommand())
+    COMMAND_TYPE cmd = options.GetCommand();
+    switch (cmd)
     {
       case COMMAND_TYPE::ENCRYPT:
-        std::print("File encoded successfully\n");
-        break;
-
       case COMMAND_TYPE::DECRYPT:
-        std::print("File decoded successfully\n");
-        break;
+      {
+        FilePtr inFile(
+          new std::fstream(options.GetInputFile(),
+                           std::ios::in | std::ios::binary)
+        );
+
+        if (not inFile->is_open())
+        {
+          PrintError(kErrOpenFileIn, options.GetInputFile());
+          return EXIT_FAILURE;
+        }
+
+        FilePtr outFile(
+          new std::fstream(options.GetOutputFile(),
+                           std::ios::out | std::ios::binary)
+        );
+
+        if (not outFile->is_open())
+        {
+          PrintError(kErrOpenFileOut, options.GetOutputFile());
+          return EXIT_FAILURE;
+        }
+
+        //
+        // Since ecnryption here is symmetric we could've used just one method
+        // for both operations (e.g. Crypt()), but since we're given a project
+        // template to work in let's leave the outer interface as is at least.
+        //
+        if (cmd == COMMAND_TYPE::ENCRYPT)
+        {
+          cryptoCtx.EncryptFile(*inFile.get(),
+                                *outFile.get(),
+                                options.GetPassword());
+        }
+        else if (cmd == COMMAND_TYPE::DECRYPT)
+        {
+          cryptoCtx.DecryptFile(*inFile.get(),
+                                *outFile.get(),
+                                options.GetPassword());
+        }
+      }
+      break;
 
       case COMMAND_TYPE::CHECKSUM:
       {
@@ -152,9 +105,8 @@ int main(int argc, char *argv[])
 
         if (not inFile->is_open())
         {
-          std::println("Failed to open file '{}' - does it exist?",
-                       options.GetInputFile());
-          return 1;
+          PrintError(kErrOpenFileIn, options.GetInputFile());
+          return EXIT_FAILURE;
         }
 
         std::string checksum = cryptoCtx.CalculateChecksum(*inFile.get());
@@ -176,8 +128,8 @@ int main(int argc, char *argv[])
   catch (const std::exception &e)
   {
     std::print(std::cerr, "Error: {}\n", e.what());
-    return 1;
+    return EXIT_FAILURE;
   }
 
-  return 0;
+  return EXIT_SUCCESS;
 }

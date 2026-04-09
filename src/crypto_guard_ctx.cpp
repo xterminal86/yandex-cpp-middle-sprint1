@@ -6,10 +6,10 @@
 #include <openssl/err.h>
 
 #ifdef DEBUG_LOGS
-  #define DebugLog(format, ...)          \
-    do {                                 \
-    printf(format "\n", ##__VA_ARGS__);  \
-    fflush(stdout);                      \
+  #define DebugLog(format, ...)    \
+    do {                           \
+    printf(format, ##__VA_ARGS__); \
+    fflush(stdout);                \
     } while (false)
 #else
   #define DebugLog(format, ...)
@@ -104,8 +104,8 @@ struct CryptoGuardCtx::Impl
       throw std::runtime_error{"Failed to create a key from password"};
     }
 
-    DebugLog("key = %s", ToHexString(params.key).data());
-    DebugLog("iv  = %s", ToHexString(params.iv).data());
+    DebugLog("key = %s\n", ToHexString(params.key).data());
+    DebugLog("iv  = %s\n", ToHexString(params.iv).data());
 
     return params;
   }
@@ -216,7 +216,7 @@ struct CryptoGuardCtx::Impl
 
     cipherIface_.reset(EVP_CIPHER_CTX_new());
 
-    DebugLog("EVP_CipherInit_ex()");
+    DebugLog("EVP_CipherInit_ex()\n");
 
     if (not EVP_CipherInit_ex(cipherIface_.get(),
                               params.cipher,
@@ -233,7 +233,7 @@ struct CryptoGuardCtx::Impl
 
     int outLen;
 
-    DebugLog("EVP_CipherUpdate()");
+    DebugLog("EVP_CipherUpdate()\n");
 
     if (not EVP_CipherUpdate(cipherIface_.get(),
                              outBuf.data(),
@@ -245,11 +245,11 @@ struct CryptoGuardCtx::Impl
       throw std::runtime_error("EVP_CipherUpdate()");
     }
 
-    DebugLog("outLen = %d", outLen);
+    DebugLog("outLen = %d\n", outLen);
 
     int addLen;
 
-    DebugLog("EVP_CipherFinal_ex()");
+    DebugLog("EVP_CipherFinal_ex()\n");
 
     //
     // "Buffer passed to EVP_EncryptFinal() must be after data just encryoted
@@ -263,19 +263,22 @@ struct CryptoGuardCtx::Impl
       throw std::runtime_error("EVP_CipherFinal_ex()");
     }
 
-    DebugLog("addLen = %d", addLen);
+    DebugLog("addLen = %d\n", addLen);
 
     int totalLen = outLen + addLen;
 
     outBuf.resize(totalLen);
 
-    DebugLog("totalLen = %d", totalLen);
-    DebugLog("outBuf.size() = %lu", outBuf.size());
+    DebugLog("totalLen = %d\n", totalLen);
+    DebugLog("outBuf.size() = %lu\n", outBuf.size());
 
     for (int i = 0; i < totalLen; ++i)
     {
       output.push_back(outBuf[i]);
+      DebugLog("%02x", outBuf[i]);
     }
+
+    DebugLog("\n");
 
     outStream.write(output.data(), output.size());
 

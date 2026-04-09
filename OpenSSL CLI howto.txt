@@ -1,7 +1,0 @@
-encrypt:
-
-openssl aes-256-cbc -in big.txt -K 03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4 -iv a9e7be72f52db7842aadd8f21e831cb1 -e > encrypted.bin
-
-decrypt:
-
-openssl aes-256-cbc -in encrypted.bin -K 03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4 -iv a9e7be72f52db7842aadd8f21e831cb1 -d

@@ -20,5 +20,3 @@ CMakeUserPresets.json
 Thumbs.db
 ehthumbs.db
 desktop.ini
-
-!build.sh

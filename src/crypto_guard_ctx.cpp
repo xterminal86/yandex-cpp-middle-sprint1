@@ -5,6 +5,16 @@
 #include <openssl/evp.h>
 #include <openssl/err.h>
 
+#ifdef DEBUG_LOGS
+  #define DebugLog(format, ...)          \
+    do {                                 \
+    printf(format "\n", ##__VA_ARGS__);  \
+    fflush(stdout);                      \
+    } while (false)
+#else
+  #define DebugLog(format, ...)
+#endif
+
 namespace CryptoGuard {
 
 // =============================================================================
@@ -43,8 +53,6 @@ struct CryptoGuardCtx::Impl
   Impl()
   {
     OpenSSL_add_all_algorithms();
-
-    cipherIface_.reset(EVP_CIPHER_CTX_new());
   }
 
   // ---------------------------------------------------------------------------
@@ -52,6 +60,23 @@ struct CryptoGuardCtx::Impl
   ~Impl()
   {
     EVP_cleanup();
+  }
+
+  // ---------------------------------------------------------------------------
+
+  template <typename Vector>
+  std::string ToHexString(const Vector& v)
+  {
+    std::stringstream ss;
+
+    ss << std::hex << std::setfill('0');
+
+    for (auto& c : v)
+    {
+      ss << std::setw(2) << +c;
+    }
+
+    return ss.str();
   }
 
   // ---------------------------------------------------------------------------
@@ -67,7 +92,7 @@ struct CryptoGuardCtx::Impl
       params.cipher,
       EVP_sha256(),
       salt.data(),
-      reinterpret_cast<const unsigned char *>(password.data()),
+      reinterpret_cast<const unsigned char*>(password.data()),
       password.size(),
       1,
       params.key.data(),
@@ -78,6 +103,9 @@ struct CryptoGuardCtx::Impl
     {
       throw std::runtime_error{"Failed to create a key from password"};
     }
+
+    DebugLog("key = %s", ToHexString(params.key).data());
+    DebugLog("iv  = %s", ToHexString(params.iv).data());
 
     return params;
   }
@@ -186,7 +214,10 @@ struct CryptoGuardCtx::Impl
     std::string input = ReadFile(inStream);
     std::string output;
 
-    // Инициализируем cipher
+    cipherIface_.reset(EVP_CIPHER_CTX_new());
+
+    DebugLog("EVP_CipherInit_ex()");
+
     if (not EVP_CipherInit_ex(cipherIface_.get(),
                               params.cipher,
                               nullptr,
@@ -198,37 +229,57 @@ struct CryptoGuardCtx::Impl
       throw std::runtime_error("EVP_CipherInit_ex()");
     }
 
-    std::vector<unsigned char> outBuf(input.length() + EVP_MAX_BLOCK_LENGTH);
+    std::vector<unsigned char> outBuf(input.size() + EVP_MAX_BLOCK_LENGTH);
 
     int outLen;
+
+    DebugLog("EVP_CipherUpdate()");
 
     if (not EVP_CipherUpdate(cipherIface_.get(),
                              outBuf.data(),
                              &outLen,
                              (unsigned char*)input.data(),
-                             input.length()))
+                             input.size()))
     {
       LogErrorsSSL();
       throw std::runtime_error("EVP_CipherUpdate()");
     }
 
+    DebugLog("outLen = %d", outLen);
+
     int addLen;
 
-    // Заканчиваем работу с cipher
-    if (not EVP_CipherFinal_ex(cipherIface_.get(), outBuf.data(), &addLen))
+    DebugLog("EVP_CipherFinal_ex()");
+
+    //
+    // "Buffer passed to EVP_EncryptFinal() must be after data just encryoted
+    // to avoid overwriting it."
+    //
+    if (not EVP_CipherFinal_ex(cipherIface_.get(),
+                               outBuf.data() + outLen,
+                               &addLen))
     {
       LogErrorsSSL();
       throw std::runtime_error("EVP_CipherFinal_ex()");
     }
 
+    DebugLog("addLen = %d", addLen);
+
     int totalLen = outLen + addLen;
+
+    outBuf.resize(totalLen);
+
+    DebugLog("totalLen = %d", totalLen);
+    DebugLog("outBuf.size() = %lu", outBuf.size());
 
     for (int i = 0; i < totalLen; ++i)
     {
       output.push_back(outBuf[i]);
     }
 
-    outStream.write(output.data(), output.length());
+    outStream.write(output.data(), output.size());
+
+    cipherIface_.reset();
   }
 
   // ---------------------------------------------------------------------------

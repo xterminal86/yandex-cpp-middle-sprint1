@@ -10,6 +10,13 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wno-write-strings)
 endif()
 
+option(DEBUG_LOGS "For printf debugging" OFF)
+
+if (DEBUG_LOGS)
+  message("Debug logs enabled")
+  add_definitions(-DDEBUG_LOGS)
+endif()
+
 # Ищем необходимые библиотеки
 find_package(OpenSSL REQUIRED)
 find_package(Boost REQUIRED COMPONENTS program_options)

@@ -1,13 +1,18 @@
 #pragma once
 
 #include <string>
+#include <memory>
 
-namespace CryptoGuard {
+#include "cmd_options.h"
 
-class CryptoGuardCtx {
-public:
-    CryptoGuardCtx() {}
-    ~CryptoGuardCtx() {}
+namespace CryptoGuard
+{
+
+class CryptoGuardCtx
+{
+  public:
+    CryptoGuardCtx();
+    ~CryptoGuardCtx();
 
     CryptoGuardCtx(const CryptoGuardCtx &) = delete;
     CryptoGuardCtx &operator=(const CryptoGuardCtx &) = delete;
@@ -16,13 +21,17 @@ public:
     CryptoGuardCtx &operator=(CryptoGuardCtx &&) noexcept = default;
 
     // API
-    void EncryptFile(std::iostream &inStream, std::iostream &outStream, std::string_view password) {}
-    void DecryptFile(std::iostream &inStream, std::iostream &outStream, std::string_view password) {}
-    std::string CalculateChecksum(std::iostream &inStream) { return "NOT_IMPLEMENTED"; }
+    void EncryptFile(std::iostream& inStream,
+                     std::iostream& outStream,
+                     std::string_view password);
+    void DecryptFile(std::iostream& inStream,
+                     std::iostream& outStream,
+                     std::string_view password);
+    std::string CalculateChecksum(std::iostream& inStream);
 
-private:
+  private:
     class Impl;
-    Impl *pImpl_;
+    std::unique_ptr<Impl> pImpl_;
 };
 
 }  // namespace CryptoGuard

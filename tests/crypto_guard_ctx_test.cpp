@@ -229,6 +229,27 @@ TEST(Decryption, Success)
 
 // =============================================================================
 
+TEST(Decryption, PartialData)
+{
+  CryptoGuard::CryptoGuardCtx instance;
+
+  auto bytes = HexStringToBytes("28a58927b86ae48aa28236a019cc4b1e4723b16b30f8");
+
+  const std::string cipherText(bytes.begin(), bytes.end());
+
+  const std::string password = "1234";
+
+  std::stringstream in;
+
+  in << cipherText;
+
+  std::stringstream out;
+
+  EXPECT_ANY_THROW( instance.DecryptFile(in, out, password) );
+}
+
+// =============================================================================
+
 TEST(Decryption, WrongPassword)
 {
   CryptoGuard::CryptoGuardCtx instance;
@@ -237,8 +258,6 @@ TEST(Decryption, WrongPassword)
 
   const std::string cipherText(bytes.begin(), bytes.end());
   const std::string password = "12345";
-
-  const std::string expected = "This is a test.\n";
 
   std::stringstream in;
 
@@ -257,8 +276,6 @@ TEST(Decryption, NotEncrypted)
 
   const std::string cipherText = "Not encrypted.";
   const std::string password = "1234";
-
-  const std::string expected = "This is a test.\n";
 
   std::stringstream in;
 

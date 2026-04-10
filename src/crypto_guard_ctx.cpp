@@ -46,7 +46,15 @@ struct CryptoGuardCtx::Impl
     )
   >;
 
-  CipherPtr cipherIface_;
+  using EvpCtxPtr = std::unique_ptr<
+    EVP_MD_CTX,
+    decltype(
+      [](EVP_MD_CTX* ptr)
+      {
+        EVP_MD_CTX_free(ptr);
+      }
+    )
+  >;
 
   // ---------------------------------------------------------------------------
 
@@ -65,7 +73,7 @@ struct CryptoGuardCtx::Impl
   // ---------------------------------------------------------------------------
 
   template <typename Vector>
-  std::string ToHexString(const Vector& v)
+  std::string ToHexString(const Vector& v) const
   {
     std::stringstream ss;
 
@@ -81,7 +89,7 @@ struct CryptoGuardCtx::Impl
 
   // ---------------------------------------------------------------------------
 
-  AesCipherParams CreateChiperParamsFromPassword(std::string_view password)
+  AesCipherParams CreateCipherParamsFromPassword(std::string_view password) const
   {
     AesCipherParams params;
 
@@ -112,7 +120,7 @@ struct CryptoGuardCtx::Impl
 
   // ---------------------------------------------------------------------------
 
-  void LogErrorsSSL()
+  void LogErrorsSSL() const
   {
     // "buf must be at least 256 bytes long"
     char buf[256] {};
@@ -127,7 +135,7 @@ struct CryptoGuardCtx::Impl
 
   // ---------------------------------------------------------------------------
 
-  std::string ReadFile(std::iostream& file)
+  std::string ReadFile(std::iostream& file) const
   {
     file.seekg(0, std::ios::end);
     auto fsize = file.tellg();
@@ -142,11 +150,9 @@ struct CryptoGuardCtx::Impl
 
   // ---------------------------------------------------------------------------
 
-  std::string CalculateChecksum(std::iostream& inStream)
+  std::string CalculateChecksum(std::iostream& inStream) const
   {
     std::string res;
-
-    std::string contents = ReadFile(inStream);
 
     unsigned char digest[EVP_MAX_MD_SIZE];
 
@@ -157,19 +163,8 @@ struct CryptoGuardCtx::Impl
       throw std::runtime_error("EVP_get_digestbyname()");
     }
 
-    using EvpCtxPtr = std::unique_ptr<
-      EVP_MD_CTX,
-      decltype( [](EVP_MD_CTX* ptr){ EVP_MD_CTX_free(ptr); } )
-    >;
-
     EvpCtxPtr mdctx;
     mdctx.reset(EVP_MD_CTX_new());
-
-    if (mdctx == nullptr)
-    {
-      LogErrorsSSL();
-      throw std::runtime_error("EVP_MD_CTX_new()");
-    }
 
     unsigned int digestLen = 0;
 
@@ -179,12 +174,32 @@ struct CryptoGuardCtx::Impl
       throw std::runtime_error("EVP_DigestInit_ex2()");
     }
 
-    if (not EVP_DigestUpdate(mdctx.get(), contents.data(), contents.length()))
+    //
+    // Reading in chunks.
+    //
+    constexpr size_t chunkSize = 32;
+
+    std::string buf(chunkSize, '\0');
+
+    while (not inStream.eof())
     {
-      LogErrorsSSL();
-      throw std::runtime_error("EVP_DigestUpdate()");
+      inStream.read(&buf[0], chunkSize);
+
+      //
+      // "EVP_DigestUpdate() hashes cnt bytes of data at d into the digest
+      // context ctx."
+      //
+      if (not EVP_DigestUpdate(mdctx.get(), buf.data(), inStream.gcount()))
+      {
+        LogErrorsSSL();
+        throw std::runtime_error("EVP_DigestUpdate()");
+      }
     }
 
+    //
+    // "EVP_DigestFinal_ex() retrieves the digest value from ctx and places it
+    // in md. "
+    //
     if (not EVP_DigestFinal_ex(mdctx.get(), digest, &digestLen))
     {
       LogErrorsSSL();
@@ -209,16 +224,14 @@ struct CryptoGuardCtx::Impl
 
   void Crypt(std::iostream& inStream,
              std::iostream& outStream,
-             const AesCipherParams& params)
+             const AesCipherParams& params) const
   {
-    std::string input = ReadFile(inStream);
-    std::string output;
-
-    cipherIface_.reset(EVP_CIPHER_CTX_new());
+    CipherPtr cipherIface;
+    cipherIface.reset(EVP_CIPHER_CTX_new());
 
     DebugLog("EVP_CipherInit_ex()\n");
 
-    if (not EVP_CipherInit_ex(cipherIface_.get(),
+    if (not EVP_CipherInit_ex(cipherIface.get(),
                               params.cipher,
                               nullptr,
                               params.key.data(),
@@ -229,34 +242,46 @@ struct CryptoGuardCtx::Impl
       throw std::runtime_error("EVP_CipherInit_ex()");
     }
 
-    std::vector<unsigned char> outBuf(input.size() + EVP_MAX_BLOCK_LENGTH);
+    //
+    // Reading in chunks.
+    //
+    constexpr size_t chunkSize = 32;
+
+    std::string buf(chunkSize, '\0');
+
+    size_t chunkCount = 1;
+
+    std::vector<unsigned char> outBuf(chunkSize + EVP_MAX_BLOCK_LENGTH);
 
     int outLen;
 
-    DebugLog("EVP_CipherUpdate()\n");
-
-    if (not EVP_CipherUpdate(cipherIface_.get(),
-                             outBuf.data(),
-                             &outLen,
-                             (unsigned char*)input.data(),
-                             input.size()))
+    while (not inStream.eof())
     {
-      LogErrorsSSL();
-      throw std::runtime_error("EVP_CipherUpdate()");
-    }
+      inStream.read(&buf[0], chunkSize);
 
-    DebugLog("outLen = %d\n", outLen);
+      DebugLog("%2lu) EVP_CipherUpdate()\n", chunkCount++);
+
+      if (not EVP_CipherUpdate(cipherIface.get(),
+                               outBuf.data(),
+                               &outLen,
+                               (unsigned char*)buf.data(),
+                               inStream.gcount()))
+      {
+        LogErrorsSSL();
+        throw std::runtime_error("EVP_CipherUpdate()");
+      }
+
+      DebugLog("outLen = %d\n", outLen);
+
+      outStream.write((char*)outBuf.data(), outLen);
+    }
 
     int addLen;
 
     DebugLog("EVP_CipherFinal_ex()\n");
 
-    //
-    // "Buffer passed to EVP_EncryptFinal() must be after data just encryoted
-    // to avoid overwriting it."
-    //
-    if (not EVP_CipherFinal_ex(cipherIface_.get(),
-                               outBuf.data() + outLen,
+    if (not EVP_CipherFinal_ex(cipherIface.get(),
+                               outBuf.data(),
                                &addLen))
     {
       LogErrorsSSL();
@@ -265,33 +290,18 @@ struct CryptoGuardCtx::Impl
 
     DebugLog("addLen = %d\n", addLen);
 
-    int totalLen = outLen + addLen;
+    outStream.write((char*)outBuf.data(), addLen);
 
-    outBuf.resize(totalLen);
-
-    DebugLog("totalLen = %d\n", totalLen);
-    DebugLog("outBuf.size() = %lu\n", outBuf.size());
-
-    for (int i = 0; i < totalLen; ++i)
-    {
-      output.push_back(outBuf[i]);
-      DebugLog("%02x", outBuf[i]);
-    }
-
-    DebugLog("\n");
-
-    outStream.write(output.data(), output.size());
-
-    cipherIface_.reset();
+    cipherIface.reset();
   }
 
   // ---------------------------------------------------------------------------
 
   void EncryptFile(std::iostream& inStream,
                    std::iostream& outStream,
-                   std::string_view password)
+                   std::string_view password) const
   {
-    AesCipherParams params = CreateChiperParamsFromPassword(password);
+    AesCipherParams params = CreateCipherParamsFromPassword(password);
     params.encrypt = 1;
 
     Crypt(inStream, outStream, params);
@@ -303,9 +313,9 @@ struct CryptoGuardCtx::Impl
 
   void DecryptFile(std::iostream& inStream,
                    std::iostream& outStream,
-                   std::string_view password)
+                   std::string_view password) const
   {
-    AesCipherParams params = CreateChiperParamsFromPassword(password);
+    AesCipherParams params = CreateCipherParamsFromPassword(password);
     params.encrypt = 0;
 
     Crypt(inStream, outStream, params);
@@ -328,7 +338,7 @@ CryptoGuardCtx::~CryptoGuardCtx()
 
 // =============================================================================
 
-std::string CryptoGuardCtx::CalculateChecksum(std::iostream& inStream)
+std::string CryptoGuardCtx::CalculateChecksum(std::iostream& inStream) const
 {
   return pImpl_->CalculateChecksum(inStream);
 }
@@ -337,7 +347,7 @@ std::string CryptoGuardCtx::CalculateChecksum(std::iostream& inStream)
 
 void CryptoGuardCtx::EncryptFile(std::iostream& inStream,
                                  std::iostream& outStream,
-                                 std::string_view password)
+                                 std::string_view password) const
 {
   pImpl_->EncryptFile(inStream, outStream, password);
 }
@@ -346,7 +356,7 @@ void CryptoGuardCtx::EncryptFile(std::iostream& inStream,
 
 void CryptoGuardCtx::DecryptFile(std::iostream& inStream,
                                  std::iostream& outStream,
-                                 std::string_view password)
+                                 std::string_view password) const
 {
   pImpl_->DecryptFile(inStream, outStream, password);
 }

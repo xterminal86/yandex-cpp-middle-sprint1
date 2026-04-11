@@ -56,6 +56,8 @@ struct CryptoGuardCtx::Impl
     )
   >;
 
+  static const size_t kOperationChunkSize = 32;
+
   // ---------------------------------------------------------------------------
 
   Impl()
@@ -177,13 +179,12 @@ struct CryptoGuardCtx::Impl
     //
     // Reading in chunks.
     //
-    constexpr size_t chunkSize = 32;
 
-    std::string buf(chunkSize, '\0');
+    std::string buf(kOperationChunkSize, '\0');
 
     while (not inStream.eof())
     {
-      inStream.read(&buf[0], chunkSize);
+      inStream.read(&buf[0], kOperationChunkSize);
 
       //
       // "EVP_DigestUpdate() hashes cnt bytes of data at d into the digest
@@ -245,19 +246,18 @@ struct CryptoGuardCtx::Impl
     //
     // Reading in chunks.
     //
-    constexpr size_t chunkSize = 32;
-
-    std::string buf(chunkSize, '\0');
+    std::string buf(kOperationChunkSize, '\0');
 
     size_t chunkCount = 1;
 
-    std::vector<unsigned char> outBuf(chunkSize + EVP_MAX_BLOCK_LENGTH);
+    std::vector<unsigned char>
+    outBuf(kOperationChunkSize + EVP_MAX_BLOCK_LENGTH);
 
     int outLen;
 
     while (not inStream.eof())
     {
-      inStream.read(&buf[0], chunkSize);
+      inStream.read(&buf[0], kOperationChunkSize);
 
       DebugLog("%2lu) EVP_CipherUpdate()\n", chunkCount++);
 
